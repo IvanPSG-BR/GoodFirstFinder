@@ -5,10 +5,10 @@
 | Camada         | Tecnologia                              | Justificativa                                    |
 |----------------|-----------------------------------------|--------------------------------------------------|
 | API            | **FastAPI** + Uvicorn                   | Alto desempenho, async-first, OpenAPI automático |
+| Auth           | **API Key estática** (`X-API-Key`)      | API privada consumida por cliente conhecido; sem necessidade de cadastro de usuários |
 | ORM / Banco    | **SQLAlchemy 2.x (async)** + PostgreSQL | Type-safe, async nativo, migrations com Alembic  |
-| Task Queue     | **Celery** + Redis                      | Processamento assíncrono robusto e escalável     |
 | HTTP Client    | **HTTPX**                               | Async/sync, ideal para GitHub API e LLMs         |
-| IA / LLM       | **OpenAI API** / **Ollama** (HTTPX)     | Flexível: nuvem ou local                         |
+| IA / LLM       | **OpenAI API** (HTTPX)                  | OpenAI-compatible: funciona com qualquer endpoint compatível |
 | Migrations     | **Alembic**                             | Versionamento de schema integrado ao SQLAlchemy  |
 | Validação      | **Pydantic v2**                         | Schemas rápidos, type-safe, integrados ao FastAPI|
 | Configuração   | **pydantic-settings**                   | Env vars validadas com type safety               |
@@ -17,19 +17,22 @@
 
 ## Arquitetura
 
-### Fluxo Assíncrono (Background)
+### Fluxo de Ingestão (CLI / Background)
 
 ```
-GitHub API ──► GitHubClient ──► Celery Task (fetch_repo_data)
-                                      │
-                                      ▼
-                              Pre-filter (Regras Booleanas)
-                                      │
-                                      ▼
-                              LLMClient (analyze_repository)
-                                      │
-                                      ▼
-                              Score calculado e salvo no PostgreSQL
+python -m app.ingest
+        │
+        ▼
+GitHubClient (busca repos com "good first issue")
+        │
+        ▼
+Pre-filter (Regras Booleanas de Elegibilidade)
+        │
+        ▼
+LLMClient (analyze_repository → OpenAI-compatible)
+        │
+        ▼
+Score calculado e salvo no PostgreSQL
 ```
 
 ### Fluxo Síncrono (Request/Response)
@@ -51,11 +54,11 @@ Usuário ──► GET /api/v1/search?language=Python&min_score=7
 
 ```
 app/
-├── core/           # Configurações globais (Settings, DB, Celery, Logging, Security)
+├── core/           # Configurações globais (Settings, DB, Logging)
 ├── common/         # Modelos base, schemas Pydantic base, exceções customizadas
 ├── modules/
-│   ├── repositories/   # CRUD de repositórios (Model, Schema, API, Service, Task)
-│   ├── scoring/        # Score de Amigabilidade (Model, Schema, API, Service, Task)
+│   ├── repositories/   # CRUD de repositórios (Model, Schema, API, Service, Tasks)
+│   ├── scoring/        # Score de Amigabilidade (Model, Schema, API, Service, Tasks)
 │   ├── search/         # Busca e filtros (Schema, API, Service)
 │   └── integrations/   # Clientes externos (GitHub, LLM)
 └── api/            # FastAPI app + router principal
@@ -66,6 +69,7 @@ app/
 ### Tabelas Principais
 
 #### `repositories`
+
 | Coluna              | Tipo       | Descrição                          |
 |---------------------|------------|------------------------------------|
 | id                  | UUID (PK)  | Identificador interno              |
@@ -81,6 +85,7 @@ app/
 | updated_at          | TIMESTAMPTZ| Última atualização                 |
 
 #### `scores`
+
 | Coluna                      | Tipo      | Descrição                          |
 |-----------------------------|-----------|-----------------------------------|
 | id                          | UUID (PK) | Identificador interno             |
@@ -95,6 +100,8 @@ app/
 ## Decisões de Arquitetura
 
 1. **Módulos por domínio:** Cada módulo contém seu próprio `models.py`, `schemas.py`, `api.py`, `services.py` e `tasks.py`. Facilita escalabilidade e manutenção.
-2. **IA nos bastidores:** LLM chamada apenas em tasks Celery (assíncronas), nunca no request path do usuário.
+2. **IA nos bastidores:** LLM chamada apenas no script de ingestão (`python -m app.ingest`), nunca no request path do usuário.
 3. **Score pré-calculado:** A consulta de busca opera sobre scores já persistidos no banco — sem latência de IA em tempo real.
 4. **SQLite em testes:** Uso de `aiosqlite` para testes rápidos sem necessidade de PostgreSQL rodando.
+5. **OpenAI-compatible only:** O `LLMClient` usa HTTPX direto contra qualquer endpoint compatível com a API OpenAI (OpenAI, Azure OpenAI, etc.), configurável via `OPENAI_BASE_URL`.
+6. **API Key estática para auth:** A API não é pública e é consumida por um cliente conhecido (o site). Autenticação por API Key no header `X-API-Key` é suficiente — sem necessidade de cadastro de usuários ou JWT. A key é configurada via env var `API_KEY`; se vazia, a auth é desabilitada (útil em desenvolvimento local).

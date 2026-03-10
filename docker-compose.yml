@@ -15,16 +15,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: .
@@ -35,25 +25,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - .:/app
     command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
-
-  worker:
-    build:
-      context: .
-      dockerfile: docker/worker/Dockerfile
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - .:/app
-    command: celery -A worker.main.celery_app worker --loglevel=info
 
 volumes:
   postgres_data:

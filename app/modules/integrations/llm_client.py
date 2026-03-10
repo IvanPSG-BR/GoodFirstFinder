@@ -5,19 +5,12 @@ from app.core.config import settings
 
 
 class LLMClient:
-    """Client to interact with OpenAI-compatible LLM APIs (OpenAI or Ollama)."""
+    """Client for OpenAI-compatible LLM APIs."""
 
-    def __init__(self, use_ollama: bool = False) -> None:
-        if use_ollama:
-            self._base_url = settings.OLLAMA_BASE_URL
-            self._api_key = "ollama"
-        else:
-            self._base_url = "https://api.openai.com/v1"
-            self._api_key = settings.OPENAI_API_KEY
-
+    def __init__(self) -> None:
         self._client = httpx.Client(
-            base_url=self._base_url,
-            headers={"Authorization": f"Bearer {self._api_key}"},
+            base_url=settings.OPENAI_BASE_URL,
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
             timeout=60.0,
         )
         self._model = settings.OPENAI_MODEL
