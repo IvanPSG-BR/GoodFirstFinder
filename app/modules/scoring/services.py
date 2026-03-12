@@ -30,9 +30,9 @@ def calculate_total_score(
     if weights is None:
         weights = {
             "documentation": 0.30,
-            "community": 0.25,
+            "community": 0.20,
             "activity": 0.20,
-            "beginner_friendliness": 0.25,
+            "beginner_friendliness": 0.30,
         }
     total = (
         documentation * weights["documentation"]
